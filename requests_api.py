@@ -1,0 +1,221 @@
+# -*- coding: utf-8 -*-
+
+# http://docs.python-requests.org/en/master/api/
+import requests
+import json 
+import pandas as pd
+import zipfile, io
+import re
+from config import DiligenceVaultsConfig
+
+class DiligenceVaultHook():
+    def __init__(self, config=None, **kwargs):
+        self.session = requests.Session()
+        self.config = ""
+        self.api_url = ""
+        self.api_key = ""
+        self.token = ""
+        self.initalize(config)
+        self.headers = {'X-API-KEY': self.api_key, "Accept": "application/json"}
+        self.get_token()
+        
+        for arg in kwargs:
+            if isinstance(kwargs[arg], dict):
+                kwargs[arg] = self.__deep_merge(getattr(self.session, arg), kwargs[arg])
+            setattr(self.session, arg, kwargs[arg])
+    
+    def initalize(self, config):
+        if config == "PROD":
+            self.config = DiligenceVaultsConfig.Production
+            self.api_url= self.config['API_URL']
+            self.api_key= self.config['API_KEY']
+        else:
+            self.config = DiligenceVaultsConfig.Test
+            self.api_url= self.config['API_URL']
+            self.api_key= self.config['API_KEY']
+            
+    def get_token(self):
+        r = self.get("v1/get-token/", headers=self.headers)
+        token = r.json()
+        self.token = token['access_token']
+        self.headers.update({"Authorization": f"Bearer {self.token}"})
+
+    def get_firms(self):
+        # List out all the firms and related information
+        r = self.get("v1/firms", headers=self.headers)
+        return r.json()
+    
+    def get_products(self):
+        # List out all the products and related information
+        r = self.get("v1/products", headers=self.headers)
+        return r.json()
+    
+    def get_projects(self, start_date=None, end_date=None, status=None, date_type=None):
+        # start_date(optional) YYYY-MM-DD
+        # end_date(optional) YYYY-MM-DD
+        # status(optional) can single or multiple with comma separated value(started,completed,invited)
+        # date_type = ‘started_at’,’completed_at’, ‘created_at’, ‘updated_at’
+        #   created_at , completed_at, Started_at = For project’s started, completed and created date
+        #   updated_at = Any responses which updated in given time span
+        
+        params = {}
+        if start_date is not None:
+            params.update({"start_date":start_date})
+            
+        if end_date is not None:
+            params.update({"end_date":end_date})
+            
+        if status is not None:
+            params.update({"status":status})
+            
+        if date_type is not None:
+            params.update({"date_type":date_type})
+
+        r = self.get("v1/projects", params=params, headers=self.headers)
+        return r.json()
+    
+    def get_projects_by_template(self, start_date=None, end_date=None, status=None, date_type=None, template=None):
+        # start_date(optional) YYYY-MM-DD
+        # end_date(optional) YYYY-MM-DD
+        # status(optional) can single or multiple with comma separated value(started,completed,invited)
+        # date_type = ‘started_at’,’completed_at’, ‘created_at’, ‘updated_at’
+        #   created_at , completed_at, Started_at = For project’s started, completed and created date
+        #   updated_at = Any responses which updated in given time span
+        
+        params = {}
+        if start_date is not None:
+            params.update({"start_date":start_date})
+            
+        if end_date is not None:
+            params.update({"end_date":end_date})
+            
+        if status is not None:
+            params.update({"status":status})
+            
+        if date_type is not None:
+            params.update({"date_type":date_type})
+
+        r = self.get("v1/projects", params=params, headers=self.headers)
+        
+        df_projects = pd.DataFrame.from_dict(r.json())
+        
+        result = df_projects.loc[df_projects['template_name'].isin([template])]
+        
+        return result
+       
+    def download_projects(self, start_date, end_date, status=None, date_type=None, exclude_documents=True, exclude_notes=True, **kwargs):
+           # start_date YYYY-MM-DD
+           # end_date YYYY-MM-DD
+           # status(optional) can single or multiple with comma separated value(started,completed,invited)
+           # date_type = ‘started_at’,’completed_at’, ‘created_at’, ‘updated_at’
+           #   created_at , completed_at, Started_at = For project’s started, completed and created date
+           #   updated_at = Any responses which updated in given time span
+           # Optional kawargs: exclude_documents=boolean, exclude_notes=boolean, status=""or["",""] , date_type=""
+           # Possible values for the status(single or multiple with comma separated): Invited, Started, Followup, Completed, Approved, NotApproved, ExtensionRequested, PendingRestart
+           # Possible values for the date_type: created_at, completed_at, started_at, updated_at
+           #    --> created_at , completed_at, Started_at = For project’s started, completed and created date
+           #    --> updated_at = Any responses which updated in given time span
+        
+        ### returns zipfile of jsons ###
+           
+        params = {}
+
+        r = re.compile('\d{4}-\d{2}-\d{2}')
+        if r.match(start_date) is None:
+            raise ValueError("Incorrect start date format, should be YYYY-MM-DD")
+        
+        if r.match(end_date) is None:
+            raise ValueError("Incorrect start date format, should be YYYY-MM-DD")
+
+        for key, value in locals().items():
+        # loop args passed and build params
+            if key is not 'kwargs':
+                if value is not None:
+                    params.update({key:value})
+        
+        additional_params = dict([i for i in kwargs.items() if i[1] != None])
+
+        if additional_params is not None:
+            params.update(additional_params)
+        
+        r = self.get("v1/projects/projects_download", params=params, headers=self.headers)
+        
+        z = zipfile.ZipFile(io.BytesIO(r.content))
+        
+        return z
+    
+    def download_projects_by_id(self, project_ids=None):
+        # project_ids string array [XXX,XXX]
+        
+        if project_ids is None: 
+            projects = self.get_projects()
+            df_projects = pd.DataFrame.from_dict(projects)
+            _project_ids = {"projects": df_projects['id'].astype(str).values.tolist()}
+        else:
+            _project_ids = {"projects": project_ids}
+        
+        r = self.post("v1/projects/projects_download", json=_project_ids, headers=self.headers, stream=True)
+        z = zipfile.ZipFile(io.BytesIO(r.content))
+        
+        df_responses = pd.DataFrame()
+        
+        for file in z.filelist:
+            if file.filename.endswith('responses.json'):
+                with z.open(file) as f:  
+                    data = f.read()  
+                    d = json.loads(data)
+                    df_nested_response = pd.DataFrame.from_dict(d)
+                    # df_flat_repsonse = (pd.concat({i: pd.DataFrame(x) for i, x in df_nested_response.pop('response').items()}).reset_index(level=1, drop=True).join(df_nested_response).reset_index(drop=True))
+                    # df_super_flat_response = pd.json_normalize(d, ['response'], errors='ignore')
+                    df_responses = pd.concat([df_responses, df_nested_response],ignore_index=True)
+            elif file.filename.endswith('projects.json'):
+                with z.open(file) as f:  
+                    data = f.read()  
+                    d = json.loads(data)
+                    df_main = pd.DataFrame.from_dict(d)
+                    
+        df_responses['project_id'] = df_responses['project_id'].astype(int)
+        df_main['id'] = df_main['id'].astype(int)
+                            
+        df_all = pd.merge(
+            df_main,
+            df_responses,
+            how="inner",
+            left_on="id",
+            right_on="project_id"
+        )
+        
+        return df_all
+           
+    def request(self, method, url, **kwargs):
+        return self.session.request(method, self.api_url+url, **kwargs)
+
+    def head(self, url, **kwargs):
+        return self.session.head(self.api_url+url, **kwargs)
+
+    def get(self, url, **kwargs):
+        return self.session.get(self.api_url+url, **kwargs)
+
+    def post(self, url, **kwargs):
+        return self.session.post(self.api_url+url, **kwargs)
+
+    def put(self, url, **kwargs):
+        return self.session.put(self.api_url+url, **kwargs)
+
+    def patch(self, url, **kwargs):
+        return self.session.patch(self.api_url+url, **kwargs)
+
+    def delete(self, url, **kwargs):
+        return self.session.delete(self.api_url+url, **kwargs)
+        
+
+
+    @staticmethod
+    def __deep_merge(source, destination):
+        for key, value in source.items():
+            if isinstance(value, dict):
+                node = destination.setdefault(key, {})
+                DiligenceVaultHook.__deep_merge(value, node)
+            else:
+                destination[key] = value
+        return destination

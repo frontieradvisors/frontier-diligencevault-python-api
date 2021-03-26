@@ -1,0 +1,59 @@
+# editor
+__pycache__/
+.vscode/
+__pycache__/
+.idea/
+.vscode
+.spyproject
+.vscode/
+.spyproject/
+
+venv/
+
+.egg
+.egg-info
+.egg-info/
+.pylint.d/
+.spyproject/config/backups/workspace.ini.bak
+.spyproject/config/workspace.ini
+
+git_command.txt
+
+# env 
+env/
+venv/
+venv2/
+
+# variables
+env.ps1
+env.sh
+
+database_data/
+data/ 
+
+tests/
+# *.log
+front-end/debug.log
+env2.ps1
+
+# server-side session
+flask_session/
+flask_session\
+/*_session/
+flask_session*
+
+
+node_modules/
+front-end/node_modules/
+
+*/node_modules/
+*/front-end/node_modules/
+.ionide/symbolCache.db
+
+.fake
+.ionide
+
+*/downloads
+*/downloads/
+*/downloads/*
+downloads/
