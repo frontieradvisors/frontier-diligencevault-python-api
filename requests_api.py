@@ -17,7 +17,11 @@ class DiligenceVaultHook():
         self.token = ""
         self.initalize(config)
         self.headers = {'X-API-KEY': self.api_key, "Accept": "application/json"}
-        self.get_token()
+        # self.get_token() #just commenting out to allow running offline
+        self.result_headings = ['project_id', 'entity_name', 
+                  'section_id', 'section_name', 
+                  'subsection_id', 'subsection_name',
+                  'sequence_id', 'question_id', 'response_type',  'text', 'value']
         
         for arg in kwargs:
             if isinstance(kwargs[arg], dict):
@@ -34,6 +38,10 @@ class DiligenceVaultHook():
             self.api_url= self.config['API_URL']
             self.api_key= self.config['API_KEY']
             
+    def token_check(self):
+        if self.token == "":
+            self.get_token()
+            
     def get_token(self):
         r = self.get("v1/get-token/", headers=self.headers)
         token = r.json()
@@ -41,7 +49,7 @@ class DiligenceVaultHook():
         self.headers.update({"Authorization": f"Bearer {self.token}"})
 
     def get_firms(self):
-        # List out all the firms and related information
+        # List out all the firms and related information        
         r = self.get("v1/firms", headers=self.headers)
         return r.json()
     
@@ -207,7 +215,121 @@ class DiligenceVaultHook():
 
     def delete(self, url, **kwargs):
         return self.session.delete(self.api_url+url, **kwargs)
+
+    def response_type_attachment(self, response):
+        #Attachment
+        return True
         
+    def response_type_aumtable(self, response):
+        #AUM History
+        return True
+        
+    def response_type_dynamicgrid(self, response):
+        #Customize Grid / Table
+        return True
+        
+    def response_type_date(self, response):
+        #Date
+        return response['value']
+        
+    def response_type_textemail(self, response):
+        #Email
+        return True
+        
+    def response_type_grid(self, response):
+        #flatten out the response to a nice dataframe
+        respose_data = response['table_data'].reset_index(drop=True)[0]
+        dfT = None
+        try:
+            df = pd.DataFrame.from_dict(respose_data)
+            df.drop(['column_options', 'column_types', 'rows'], axis=1, inplace=True, errors="ignore")
+            df.set_index('columns', inplace=True)
+            dfT = df.T
+        except:
+            try:
+                df = pd.DataFrame.from_dict(respose_data, orient='index').T
+                df.drop(['column_options', 'column_types', 'rows'], axis=1, inplace=True, errors="ignore")
+                df.set_index('columns', inplace=True)
+                dfT = df.T
+            except:
+                try:
+                    df = pd.DataFrame(dict([ (k,pd.Series(v)) for k,v in respose_data.items() ]))
+                    df.set_index('columns', inplace=True)
+                    df.drop(['column_options', 'column_types', 'rows'], axis=1, inplace=True, errors="ignore")
+                    dfT = df.T
+                except Exception as e:
+                    raise ValueError(str(e))
+        return dfT
+        
+    def response_type_identifier(self, response):
+        #Identifier
+        return True
+        
+    def response_type_checkBox(self, response):
+        #List of multiple choices / Checkbox
+        return True
+        
+    def response_type_dropdown(self, response):
+        #List of single choice / Dropdown
+        return True
+        
+    def response_type_bookends(self, response):
+        #Min-max range
+        return True
+        
+    def response_type_numeric(self, response):
+        #Numeric – Decimal
+        return True
+        
+    def response_type_integer(self, response):
+        #Numeric – Integer
+        return True
+        
+    def response_type_percentage(self, response):
+        #Percentage
+        return True
+        
+    def response_type_textphone(self, response):
+        #Phone(self, response):
+        return True
+        
+    def response_type_text(self, response):
+        #Text Explanation - One Line
+        return True
+        
+    def response_type_textmultiline(self, response):
+        #Text Explanation – Paragraph
+        return True
+        
+    def response_type_returntable(self, response):
+        #Track Record
+        return True
+        
+    def response_type_boolean(self, response):
+        #Yes/No
+        return True
+        
+    def response_type_noplus(self, response):
+        #Yes/No with explanation for No
+        return True
+        
+    def response_type_booleanplus(self, response):
+        #Yes/No with explanation for Yes
+        return True
+    
+    def json_response_data_to_dict(self, json_data):
+        #flattening nested json responses into dataframes
+        d = json.loads(json_data)
+        df_nested_response = pd.DataFrame.from_dict(d)
+        df_flat_repsonse = (pd.concat({i: pd.DataFrame(x) for i, x in df_nested_response.pop('response').items()}).reset_index(level=1, drop=True).join(df_nested_response).reset_index(drop=True))
+        results = df_flat_repsonse[self.result_headings].to_dict(orient='records')
+        
+        for dic in results:
+            if dic['response_type'] == 'type_grid':
+                response = df_flat_repsonse.loc[df_flat_repsonse['question_id']== dic['question_id']]
+                value = self.response_type_grid(response)
+                dic['value'] = value
+        return results
 
 
     @staticmethod

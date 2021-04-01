@@ -6,6 +6,10 @@ import json
 
 # initalize the DV Hook
 dv_api = DiligenceVaultHook()
+dv_api.get_token()
+
+# get project list
+project_list = dv_api.get_projects()
 
 # download projections between a date
 z = dv_api.download_projects(start_date='2020-06-30', end_date='2020-12-31')
@@ -38,3 +42,13 @@ df_all = pd.merge(
     left_on="id",
     right_on="project_id"
 )
+
+
+#  read in DV json response file, flatten nested table reponses into dictionary with dataframes
+
+file_path = 'C:/OneDrive/Frontier Advisors Pty Ltd/Frontier Advisors - OneDrive/GSampson Briefcase/GitHub/DV_API/downloads/23328_AlphaFixedIncome/responses/responses.json'
+
+with open(file_path) as f:  
+    data = f.read()
+    dv_data_dict = dv_api.json_response_data_to_dict(data)
+    
