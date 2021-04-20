@@ -3,7 +3,7 @@
 class DiligenceVaultsConfig(object):
     Production = {
             'URL':'https://app.diligencevault/',
-            'API_URL': 'https://api-appgs.diligencevault.com/api/',
+            'API_URL': 'https://api.diligencevault.com/api/',
             'API_KEY':'214157e014274a1e9e1e2395951d83de'
             }
     Test = {

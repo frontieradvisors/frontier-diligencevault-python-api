@@ -9,6 +9,10 @@ import re
 from config import DiligenceVaultsConfig
 
 class DiligenceVaultHook():
+    folder_path = 'C:/OneDrive/Frontier Advisors Pty Ltd/Frontier Advisors - OneDrive/GSampson Briefcase/GitHub/DV_API/downloads/'
+    projects_file_name = 'projects.json'
+    response_paths = '/responses/responses.json'
+    
     def __init__(self, config=None, **kwargs):
         self.session = requests.Session()
         self.config = ""
@@ -226,7 +230,7 @@ class DiligenceVaultHook():
         
     def response_type_dynamicgrid(self, response):
         #Customize Grid / Table
-        return True
+        return self.response_type_grid(response)
         
     def response_type_date(self, response):
         #Date
@@ -259,6 +263,8 @@ class DiligenceVaultHook():
                     dfT = df.T
                 except Exception as e:
                     raise ValueError(str(e))
+                    
+        dfT.drop(list(dfT.filter(regex = 'None')), axis = 1, inplace = True)
         return dfT
         
     def response_type_identifier(self, response):
@@ -317,10 +323,9 @@ class DiligenceVaultHook():
         #Yes/No with explanation for Yes
         return True
     
-    def json_response_data_to_dict(self, json_data):
-        #flattening nested json responses into dataframes
-        d = json.loads(json_data)
-        df_nested_response = pd.DataFrame.from_dict(d)
+    def responses_df_to_dict(self, df_nested_response):
+        # flatten any nested responses into dataframes
+        # return a nice dictionary
         df_flat_repsonse = (pd.concat({i: pd.DataFrame(x) for i, x in df_nested_response.pop('response').items()}).reset_index(level=1, drop=True).join(df_nested_response).reset_index(drop=True))
         results = df_flat_repsonse[self.result_headings].to_dict(orient='records')
         
@@ -330,6 +335,77 @@ class DiligenceVaultHook():
                 value = self.response_type_grid(response)
                 dic['value'] = value
         return results
+    
+    def downloaded_json_file_to_df(self, file_path):
+        with open(file_path) as f:  
+            data = f.read()        
+            f.close()
+        d = json.loads(data)
+        df = pd.DataFrame.from_dict(d)
+        return df
+    
+    def load_json_file(self, file_path):
+        with open(file_path) as f:  
+            data = f.read()        
+            f.close()        
+        return data
+    
+    def get_radias_infra_responses(self, start_date, end_date):
+        # flatten any nested responses into dataframes
+        # return a nice dictionary
+        df_flat_repsonse = (pd.concat({i: pd.DataFrame(x) for i, x in df_nested_response.pop('response').items()}).reset_index(level=1, drop=True).join(df_nested_response).reset_index(drop=True))
+        results = df_flat_repsonse[self.result_headings].to_dict(orient='records')
+        
+        for dic in results:
+            if dic['response_type'] == 'type_grid':
+                response = df_flat_repsonse.loc[df_flat_repsonse['question_id']== dic['question_id']]
+                value = self.response_type_grid(response)
+                dic['value'] = value
+        return results
+    
+
+# =============================================================================
+#     def result(self, project_list):        
+#         if project_ids is None: 
+#             projects = self.get_projects()
+#             df_projects = pd.DataFrame.from_dict(projects)
+#             _project_ids = {"projects": df_projects['id'].astype(str).values.tolist()}
+#         else:
+#             _project_ids = {"projects": project_ids}
+#         
+#         r = self.post("v1/projects/projects_download", json=_project_ids, headers=self.headers, stream=True)
+#         z = zipfile.ZipFile(io.BytesIO(r.content))
+#         
+#         df_responses = pd.DataFrame()
+#         
+#         for file in z.filelist:
+#             if file.filename.endswith('responses.json'):
+#                 with z.open(file) as f:  
+#                     data = f.read()  
+#                     d = json.loads(data)
+#                     df_nested_response = pd.DataFrame.from_dict(d)
+#                     # df_flat_repsonse = (pd.concat({i: pd.DataFrame(x) for i, x in df_nested_response.pop('response').items()}).reset_index(level=1, drop=True).join(df_nested_response).reset_index(drop=True))
+#                     # df_super_flat_response = pd.json_normalize(d, ['response'], errors='ignore')
+#                     df_responses = pd.concat([df_responses, df_nested_response],ignore_index=True)
+#             elif file.filename.endswith('projects.json'):
+#                 with z.open(file) as f:  
+#                     data = f.read()  
+#                     d = json.loads(data)
+#                     df_main = pd.DataFrame.from_dict(d)
+#                     
+#         df_responses['project_id'] = df_responses['project_id'].astype(int)
+#         df_main['id'] = df_main['id'].astype(int)
+#                             
+#         df_all = pd.merge(
+#             df_main,
+#             df_responses,
+#             how="inner",
+#             left_on="id",
+#             right_on="project_id"
+#         )
+#         
+#         return df_all
+# =============================================================================
 
 
     @staticmethod
